@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: netology-svc
+spec:
+  ports:
+  - name: echotest
+    port: 3001
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: myapp
