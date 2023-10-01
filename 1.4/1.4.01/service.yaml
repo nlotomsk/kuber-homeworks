@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  selector:
+    app: nginx
+  ports:
+  - name: nginx
+    protocol: TCP
+    port: 9001
+    targetPort: 80
+  # - name: https-port
+  #   port: 11443
+  #   protocol: TCP
+  - name: http-port
+    port: 9002
+    protocol: TCP  
+    targetPort: 8080
