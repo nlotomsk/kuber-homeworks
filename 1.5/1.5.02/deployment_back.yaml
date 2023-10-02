@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginxback
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginxback
+  template:
+    metadata:
+      labels:
+        app: nginxback
+    spec:
+      initContainers:
+        - name: init
+          image: alpine
+          command: ['sh', '-c', 'echo API > /usr/share/nginx/html/index.html']
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/nginx/html
+      containers:
+      - name: nginxback
+        image: wbitt/network-multitool
+        # env:
+        # - name: http-port
+        #   value: "80"
+        ports:
+        - containerPort: 80
+          name: http-port
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/nginx/html
+      volumes:
+        - name: data
+          emptyDir: {}

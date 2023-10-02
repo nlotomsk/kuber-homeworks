@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginxback
+  template:
+    metadata:
+      labels:
+        app: nginxback
+    spec:
+      containers:
+      - name: network-multitool
+        image: wbitt/network-multitool
+        env:
+        - name: http-port
+          value: "80"
+        ports:
+        - containerPort: 80
+          name: http-port
