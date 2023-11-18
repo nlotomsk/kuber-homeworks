@@ -33,10 +33,12 @@ spec:
         - name: busybox
           image: busybox:latest
           command: ["/bin/sh", "-c"]
-          args: ["while true; do echo $(date) >> /logs-dir/log.txt; sleep 5; done"]
+          args: ["while true; do echo $(date '+%Y-%m-%d %H:%M:%S')
+ >> /logs-dir/log.txt; sleep 5; done"]
           volumeMounts:
             - name: nfsdir
-            mountPath: /logs-dir
+              mountPath: /logs-dir
       volumes:
         - name: nfsdir
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: pvc

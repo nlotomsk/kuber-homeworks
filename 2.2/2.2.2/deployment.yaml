@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend
+  name: multitool-busybox-deployment-nfs
   labels:
-    app: volume
+    app: nfs
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: volume
+      app: multi-box
   template:
     metadata:
       labels:
-        app: volume
+        app: multi-box
     spec:
       containers:
         - name: network-multitool
@@ -28,15 +28,17 @@ spec:
           - containerPort: 11443
             name: https-port
           volumeMounts:
-          - name: nfsdir
-            mountPath: /logs-dir
-        - name: busybox
-          image: busybox:latest
+            - name: nfs-storage
+              mountPath: /data
+        - name: busybox-container
+          image: busybox
           command: ["/bin/sh", "-c"]
-          args: ["while true; do echo $(date) >> /logs-dir/log.txt; sleep 5; done"]
+          args: ["while true; do echo $(date '+%Y-%m-%d %H:%M:%S')
+ >> /data/log.txt; sleep 5; done"]
           volumeMounts:
-            - name: nfsdir
-            mountPath: /logs-dir
+            - name: nfs-storage
+              mountPath: /data
       volumes:
-        - name: nfsdir
-          emptyDir: {}
+        - name: nfs-storage
+          persistentVolumeClaim:
+            claimName: my-pvc
