@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: volume
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volume
+  template:
+    metadata:
+      labels:
+        app: volume
+    spec:
+      containers:
+        - name: network-multitool
+          image: wbitt/network-multitool
+          env:
+          - name: http-port
+            value: "1180"
+          - name: HTTPS_PORT
+            value: "11443"
+          ports:
+          - containerPort: 1180
+            name: http-port
+          - containerPort: 11443
+            name: https-port
+          volumeMounts:
+          - name: nfsdir
+            mountPath: /var/log/syslog
+            readOnly: true
+      volumes:
+        - name: nfsdir
+          hostPath:
+            path: /var/log/syslog
