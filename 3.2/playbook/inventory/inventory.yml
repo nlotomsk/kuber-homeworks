@@ -1,0 +1,22 @@
+---
+Control-node:
+  hosts:
+    controlnode-01:
+      ansible_host: 51.250.92.146 
+      ansible_user: ubuntu
+
+Work-node:
+  hosts:
+    worknode-01:
+      ansible_host: 51.250.14.242
+      ansible_user: ubuntu 
+    worknode-02:
+      ansible_host: 158.160.115.39
+      ansible_user: ubuntu 
+    worknode-03:
+      ansible_host: 158.160.117.51
+      ansible_user: ubuntu 
+    worknode-04:
+      ansible_host: 158.160.117.30
+      ansible_user: ubuntu 
+
