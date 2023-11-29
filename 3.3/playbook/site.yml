@@ -1,0 +1,127 @@
+---
+- name: Install Clickhouse
+  hosts: all
+  become: true
+
+  tasks:
+    # - name: Pinger
+    #   ansible.builtin.ping:
+
+    - name: Install
+      ansible.builtin.apt:
+        pkg:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gpg
+        update_cache: true
+        #become: true
+
+    - name: Mkdir keyrings
+      ansible.builtin.file:
+        path: '/etc/apt/keyrings'
+        state: directory
+        #group: www-data
+        #owner: www-data
+        mode: '0755'
+
+    # - name: Add Example GPG key
+    #   ansible.builtin.get_url:
+    #     url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    #     dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    #     mode: '0644'
+    #     force: true
+    - name: Add gpg key # добавляем ключ
+      apt_key:
+        url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+        state: present
+        keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    # - name: Key repo
+    #   ansible.builtin.command:
+    #     argv:
+    #     - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    #     # - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" 
+    #     # - tee /etc/apt/sources.list.d/kubernetes.list
+  
+    - name: Add Example repo
+      apt_repository:
+        repo: 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main'
+
+    - name: Install K8s
+      ansible.builtin.apt:
+        pkg:
+          - kubelet 
+          - kubeadm
+          - kubectl
+          - containerd
+        update_cache: true
+        #become: true
+
+    - name: Hold kubeadm
+      ansible.builtin.dpkg_selections:
+        name: '{{ item }}'
+        selection: hold
+      with_items:
+        - kubelet 
+        - kubeadm
+        - kubectl
+        - containerd
+
+    
+    - name: Restart kubelet # презапускаем kubelet
+      service:
+        name: kubelet
+        state: restarted
+
+    # - name: Enable CRI plugin in containerd # замена строки на включение плагина CRI 
+    #   lineinfile:
+    #     path: /etc/containerd/config.toml
+    #     regexp: '^disabled_plugins'
+    #     line: enable_plugins=["cri"]
+    #     state: present
+
+    - name: restart containedr # презапускаем containedr
+      service:
+        name: containerd
+        state: restarted
+
+    - name: Remove swapfile from /etc/fstab # В эти двух командах выключаем swap
+      mount:
+        name: "{{ item }}"
+        fstype: swap
+        state: absent
+      with_items:
+        - swap
+        - none
+
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+      
+    - name: Initialize the Kubernetes cluster using kubeadm # инициализируем кластер
+      # become_user: root
+      command: kubeadm init
+
+    - name: get permission # даем доступ для обычного пользователя
+      shell: "{{ item }}"
+      become_user: ubuntu
+      with_items:
+        - mkdir -p $HOME/.kube
+        - sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        - sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Install calico pod network # устанавливаем calico pod network
+      become: false
+      shell: "{{ item }}"
+      with_items:
+        - curl https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml -O
+        - kubectl apply -f calico.yaml
+
+    - name: Generate join command # показываем команду с добавлением ноды и записываем ее в переменную
+      become_user: ubuntu
+      command: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Copy join command to local file # создаем локальный файл и добавляем туда переменную для присоединения ноды
+      local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
