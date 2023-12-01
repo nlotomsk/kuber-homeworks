@@ -5,3 +5,13 @@
 # vectore_config_dir: "{{ ansible_user_dir }}/vector_config"
 # # Vector config dir
 # vectore_config: 
+
+# kubernetes_packages:
+#   - name: kubelets
+#     state: present
+#   - name: kubectl
+#     state: present
+#   - name: kubeadm
+#     state: present
+#   - name: kubernetes-cni
+#     state: present

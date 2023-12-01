@@ -3,6 +3,10 @@
   hosts: all
   become: true
 
+  handlers:
+  - name: restart kubelet
+    service: name=kubelet state=restarted
+
   tasks:
     # - name: Pinger
     #   ansible.builtin.ping:
@@ -48,15 +52,31 @@
       apt_repository:
         repo: 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main'
 
-    - name: Install K8s
-      ansible.builtin.apt:
-        pkg:
-          - kubelet 
-          - kubeadm
-          - kubectl
-          - containerd
-        update_cache: true
-        #become: true
+    - name: Install Kubernetes packages.
+      package:
+        name: "{{ item.name | default(item) }}"
+        state: "{{ item.state | default('present') }}"
+      notify: restart kubelet
+      with_items:
+          - name: kubelet
+            state: present
+          - name: kubectl
+            state: present
+          - name: kubeadm
+            state: present
+          - name: kubernetes-cni
+            state: present
+          - name: containerd
+            state: present
+    # - name: Install K8s
+    #   ansible.builtin.apt:
+    #     pkg:
+    #       - kubelet 
+    #       - kubeadm
+    #       - kubectl
+    #       - containerd
+    #     update_cache: true
+    #   become: false
 
     - name: Hold kubeadm
       ansible.builtin.dpkg_selections:
@@ -98,18 +118,92 @@
     - name: Disable swap
       command: swapoff -a
       when: ansible_swaptotal_mb > 0
-      
-    - name: Initialize the Kubernetes cluster using kubeadm # инициализируем кластер
-      # become_user: root
-      command: kubeadm init
-
-    - name: get permission # даем доступ для обычного пользователя
+    - name: Get br_netfilter # Включаем forwarding// Зарабтала таска
       shell: "{{ item }}"
-      become_user: ubuntu
+      #become_user: root
       with_items:
-        - mkdir -p $HOME/.kube
-        - sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-        - sudo chown $(id -u):$(id -g) $HOME/.kube/config
+        - sudo modprobe br_netfilter
+        - sudo echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf 
+        - sudo echo "net.bridge.bridge-nf-call-iptables=1" >> /etc/sysctl.conf
+        - sudo echo "net.bridge.bridge-nf-call-arptables=1" >> /etc/sysctl.conf
+        - sudo echo "net.bridge.bridge-nf-call-ip6tables=1" >> /etc/sysctl.conf 
+        - sudo sysctl -p /etc/sysctl.conf
+      #become: true
+
+- name: Init K8s
+  hosts: Control-node
+  become: false   
+  tasks:
+
+    # - name: kubernetes.yml --> Install Flannel
+    #   shell: kubectl -n kube-system apply -f https://raw.githubusercontent.com/coreos/flannel/bc79dd1505b0c8681ece4de4c0d86c5cd2643275/Documentation/kube-flannel.yml
+    #   become: yes
+    #   environment:
+    #     KUBECONFIG: "/etc/kubernetes/admin.conf"
+    #   when: inventory_hostname in (groups['masters'] | last)
+
+    - name: Initialize the Kubernetes cluster using kubeadm # инициализируем кластер
+      #become_user: root
+      shell: "sudo kubeadm init --apiserver-advertise-address={{ ansible_default_ipv4.address}} --pod-network-cidr 10.244.0.0/16 --apiserver-cert-extra-sans={{ ansible_host}}"
+      args:
+        chdir: $HOME
+        creates: cluster_initialized.txt
+      become: false
+    
+    - name: Mkdir HOME/.kube/
+      ansible.builtin.file:
+        path: '/home/ubuntu/.kube/'
+        state: directory
+        #group: www-data
+        #owner: www-data
+        mode: '0755'
+      become: false
+#-------------------
+#Дальше не работает
+#------------------
+
+    # - name: Check if Kubernetes has already been initialized.
+    #   stat:
+    #     path: /etc/kubernetes/admin.conf
+    #   register: kubernetes_init_stat
+
+    # # - name: Copy file with owner and permissions
+    # #   ansible.builtin.copy:
+    # #     src: "/etc/kubernetes/admin.conf"
+    # #     dest: "$HOME/.kube/config/"
+    # #     remote_src: true
+    # #     #become_user: ubuntu
+    # #     owner: root
+    # #     group: root
+    # #     #mode: '0755'
+    # #   become: false
+
+    # - name: Mkdir sudo chown HOME/.kube/
+    #   ansible.builtin.file:
+    #     path: '/home/ubuntu/.kube/config'
+    #     recurse: yes
+    #     group: ubuntu
+    #     owner: ubuntu
+    #     mode: '0755'
+    #   become: true
+
+    - name: Get permission # даем доступ для обычного пользователя
+      shell: "sudo cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config"
+      #become_user: ubuntu
+      #become: false
+
+    - name: Get permission # даем доступ для обычного пользователя
+      shell: "sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config"
+      become: false
+
+    # - name: Get permission # даем доступ для обычного пользователя
+    #   shell: "{{ item }}"
+    #   #become_user: ubuntu
+    #   with_items:
+    #     #- mkdir -p /home/ubuntu/.kube
+    #     - cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+    #     - sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
+    #   become: false
 
     - name: Install calico pod network # устанавливаем calico pod network
       become: false
@@ -119,7 +213,7 @@
         - kubectl apply -f calico.yaml
 
     - name: Generate join command # показываем команду с добавлением ноды и записываем ее в переменную
-      become_user: ubuntu
+      #become_user: ubuntu
       command: kubeadm token create --print-join-command
       register: join_command
 

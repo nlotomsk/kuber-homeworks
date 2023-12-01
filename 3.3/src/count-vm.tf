@@ -1,5 +1,5 @@
 resource "yandex_compute_instance" "worknode" {
-  count       = 4
+  count       = 1
   name        = "${local.role.1}-0${count.index+1}"
   hostname    = "${local.role.1}-0${count.index+1}"
   platform_id = var.vm_worknode_instance_platform_id
