@@ -1,0 +1,81 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: front-networkpolicy
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: front
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: back
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: back  
+    - to:               
+      ports:            
+      - protocol: UDP   
+        port: 53  
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: back-networkpolicy
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: back
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [front, cache]}
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [front, cache]}
+    - to:               
+      ports:            
+      - protocol: UDP   
+        port: 53  
+
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cache-networkpolicy
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: cache
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: back
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: back
+    - to:               
+      ports:            
+      - protocol: UDP   
+        port: 53 

@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: front-networkpolicy
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: front
+  policyTypes:
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: back
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: back  
+    - to:               
+      ports:            
+      - protocol: UDP   
+        port: 53  

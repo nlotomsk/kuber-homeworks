@@ -1,11 +1,13 @@
 ---
 - name: Install Clickhouse
   hosts: all
-  become: true
+  become: false
 
   handlers:
   - name: restart kubelet
     service: name=kubelet state=restarted
+    become: true
+
 
   tasks:
     # - name: Pinger
@@ -18,67 +20,42 @@
         - ca-certificates
         - curl
         - gpg
+        - pip
         update_cache: true
-        #become: true
+      become: true
 
-    - name: Mkdir keyrings
+    - name: Mkdir keyrings # Добаление директории 
       ansible.builtin.file:
         path: '/etc/apt/keyrings'
         state: directory
-        #group: www-data
-        #owner: www-data
         mode: '0755'
+      become: true
 
-    # - name: Add Example GPG key
-    #   ansible.builtin.get_url:
-    #     url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-    #     dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    #     mode: '0644'
-    #     force: true
     - name: Add gpg key # добавляем ключ
       apt_key:
         url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
         state: present
         keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-
-    # - name: Key repo
-    #   ansible.builtin.command:
-    #     argv:
-    #     - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    #     # - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" 
-    #     # - tee /etc/apt/sources.list.d/kubernetes.list
+      become: true
   
-    - name: Add Example repo
+    - name: Add Example repo # Добавляем репозиторий
       apt_repository:
         repo: 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main'
+      become: true
 
-    - name: Install Kubernetes packages.
+    - name: Install Kubernetes packages. # Установка K8s
       package:
-        name: "{{ item.name | default(item) }}"
-        state: "{{ item.state | default('present') }}"
+        name: 
+          - kubelet
+          - kubectl
+          - kubeadm
+          - kubernetes-cni
+          - containerd
+        state: present
       notify: restart kubelet
-      with_items:
-          - name: kubelet
-            state: present
-          - name: kubectl
-            state: present
-          - name: kubeadm
-            state: present
-          - name: kubernetes-cni
-            state: present
-          - name: containerd
-            state: present
-    # - name: Install K8s
-    #   ansible.builtin.apt:
-    #     pkg:
-    #       - kubelet 
-    #       - kubeadm
-    #       - kubectl
-    #       - containerd
-    #     update_cache: true
-    #   become: false
+      become: true
 
-    - name: Hold kubeadm
+    - name: Hold kubeadm # отключим обновления
       ansible.builtin.dpkg_selections:
         name: '{{ item }}'
         selection: hold
@@ -87,24 +64,20 @@
         - kubeadm
         - kubectl
         - containerd
+      become: true
 
     
     - name: Restart kubelet # презапускаем kubelet
       service:
         name: kubelet
         state: restarted
-
-    # - name: Enable CRI plugin in containerd # замена строки на включение плагина CRI 
-    #   lineinfile:
-    #     path: /etc/containerd/config.toml
-    #     regexp: '^disabled_plugins'
-    #     line: enable_plugins=["cri"]
-    #     state: present
+      become: true
 
     - name: restart containedr # презапускаем containedr
       service:
         name: containerd
         state: restarted
+      become: true
 
     - name: Remove swapfile from /etc/fstab # В эти двух командах выключаем swap
       mount:
@@ -118,17 +91,18 @@
     - name: Disable swap
       command: swapoff -a
       when: ansible_swaptotal_mb > 0
+
     - name: Get br_netfilter # Включаем forwarding// Зарабтала таска
       shell: "{{ item }}"
       #become_user: root
       with_items:
-        - sudo modprobe br_netfilter
-        - sudo echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf 
-        - sudo echo "net.bridge.bridge-nf-call-iptables=1" >> /etc/sysctl.conf
-        - sudo echo "net.bridge.bridge-nf-call-arptables=1" >> /etc/sysctl.conf
-        - sudo echo "net.bridge.bridge-nf-call-ip6tables=1" >> /etc/sysctl.conf 
-        - sudo sysctl -p /etc/sysctl.conf
-      #become: true
+        - modprobe br_netfilter
+        - echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf 
+        - echo "net.bridge.bridge-nf-call-iptables=1" >> /etc/sysctl.conf
+        - echo "net.bridge.bridge-nf-call-arptables=1" >> /etc/sysctl.conf
+        - echo "net.bridge.bridge-nf-call-ip6tables=1" >> /etc/sysctl.conf 
+        - sysctl -p /etc/sysctl.conf
+      become: true
 
 - name: Init K8s
   hosts: Control-node
@@ -219,3 +193,119 @@
 
     - name: Copy join command to local file # создаем локальный файл и добавляем туда переменную для присоединения ноды
       local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
+
+- name: Init nodes
+  hosts: Work-node
+  become: false   
+  tasks:
+    # tasks file for node_invite
+    - name: Copy the join command to server location # копируем файл с нашей комадной для присоединения ноды на сервер, меняем расширение и добавляем права на исполнение
+      copy: src=join-command dest=/tmp/join-command.sh mode=0777
+
+    - name: Join the node to cluster # запускаем наш файл
+      command: sh /tmp/join-command.sh
+      become: true
+
+- name: Deployment app
+  hosts: Control-node
+  become: false   
+  tasks:
+
+  - name: install pre-requisites
+    pip:
+      name:
+        - openshift
+        - pyyaml
+        - kubernetes 
+
+  - name: Create a k8s namespace
+    kubernetes.core.k8s:
+      name: app
+      api_version: v1
+      kind: Namespace
+      state: present
+
+  - name: Create a Service object from an inline definition
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: back
+          namespace: app
+          labels:
+            app: back
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: back
+          template:
+            metadata:
+              labels:
+                app: back
+            spec:
+              containers:
+              - name: back
+                image: wbitt/network-multitool
+                env:
+                  - name: HTTP_PORT
+                    value: "8080"
+                ports:
+                - containerPort: 8080
+
+    - name: Create a Deployment back from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './deployment/deployment_back.yaml'
+
+    - name: Create a Deployment cache from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './deployment/deployment_cache.yaml'
+
+    - name: Create a Deployment front from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './deployment/deployment_front.yaml'
+
+    - name: Create a service front from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './service/service_front.yaml'
+
+    - name: Create a service cache from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './service/service_cache.yaml'
+
+    - name: Create a service back from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './service/service_back.yaml'
+
+    # - name: Ingress not full pods from a local file
+    #   kubernetes.core.k8s:
+    #     state: absent
+    #     template: './ingress/ingress-all.yaml'
+
+    - name: Ingress not full pods from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './ingress/ingress-not.yaml'
+
+    - name: Ingress backend -> cache from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './ingress/ingress-back.yaml'
+
+    - name: Ingress cache from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './ingress/ingress-cache.yaml'
+
+    - name: Ingress frontend -> backend from a local file
+      kubernetes.core.k8s:
+        state: present
+        template: './ingress/ingress-front.yaml'

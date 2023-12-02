@@ -17,6 +17,7 @@ variable "vm_worknode_resources" {
     "cores"         = 2
     "memory"        = 2
     "core_fraction" = 5
+    "disk"          = 100
   }
   description = "web_resources"
 }
@@ -82,7 +83,7 @@ variable "forwarded_settings_one" {
     vm_name="01", 
     cpu=2, 
     ram=4, 
-    disk=15,
+    disk=50,
     core_fraction=5
   }]
 }
